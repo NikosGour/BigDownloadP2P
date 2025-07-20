@@ -128,10 +128,10 @@ else
 	echo "tags: $tags"
 
 	log_info "Packages to build:"
-	go list -f '{{.GoFiles}}' $tags $project_dir/src $project_dir/src/build
+	go list -f '{{.GoFiles}}' $tags $project_dir $project_dir/build
 
 	log_info "Building for linux"
-	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$out_name $tags $project_dir/src)
+	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$out_name $tags $project_dir)
 
 	if [ $? -ne 0 ]; then
 		log_error "Build failed with error:"
