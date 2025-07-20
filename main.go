@@ -7,6 +7,11 @@ import (
 )
 
 func main() {
-	log.Debug("DEBUG_MODE = %t", build.DEBUG_MODE)
-	app.Main()
+	if build.DEBUG_MODE {
+		log.Debug("DEBUG MODE")
+	} else {
+		log.Debug("RELEASE MODE")
+	}
+
+	app.Start()
 }
