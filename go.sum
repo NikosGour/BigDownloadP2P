@@ -1,0 +1,4 @@
+github.com/NikosGour/logging v0.1.6 h1:SqqWcAGABK47MK51dWHXhBoMMA9tyQZrj8JLdDmwqnc=
+github.com/NikosGour/logging v0.1.6/go.mod h1:LAqi5AhghslpJwTIukrAdgCMNpN9g3uZ6uLqEHCUBvc=
+gitlab.com/metakeule/fmtdate v1.2.2 h1:ce0Qnwo6PAONi6xwPr4YxdxAFIKqNfoMbHG4c49vIjk=
+gitlab.com/metakeule/fmtdate v1.2.2/go.mod h1:uZUf21xepWGLp6PgJGBbHeBVWO+/gsKi3Gdh0Fu4lGg=
