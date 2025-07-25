@@ -11,7 +11,7 @@ import (
 	log "github.com/NikosGour/logging/src"
 )
 
-func receiver(port int) error {
+func Receive(port int) error {
 	address := "0.0.0.0:" + strconv.Itoa(port)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {

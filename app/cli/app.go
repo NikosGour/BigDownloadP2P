@@ -1,6 +1,7 @@
-package app
+package cli
 
 import (
+	"github.com/NikosGour/BigDownloadP2P/app"
 	log "github.com/NikosGour/logging/src"
 )
 
@@ -14,9 +15,9 @@ func Start() {
 
 	address := "localhost"
 	if is_receiver {
-		err = receiver(port)
+		err = app.Receive(port)
 	} else {
-		fs := NewFileSender(port, address)
+		fs := app.NewFileSender(port, address)
 		err = fs.SendFiles(files)
 	}
 

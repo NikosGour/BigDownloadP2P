@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/NikosGour/BigDownloadP2P/app"
+	"github.com/NikosGour/BigDownloadP2P/app/cli"
 	"github.com/NikosGour/BigDownloadP2P/build"
 	log "github.com/NikosGour/logging/src"
 )
@@ -13,5 +13,5 @@ func main() {
 		log.Debug("RELEASE MODE")
 	}
 
-	app.Start()
+	cli.Start()
 }
