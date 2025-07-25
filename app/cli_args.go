@@ -12,6 +12,8 @@ var (
 
 func commandLineArgs() (int, bool, []string, error) {
 	const usage = `Usage: BigDownloadP2P [OPTIONS] [FILES]
+Files:
+	You can pass space seperated file paths at the end of the command to send to the address. E.g. BigDownloadP2P -p 4444 ./a.txt ./b.log ./c.exe
 Options:
 		-p | --port		Define the port for the client to use (default: 6969)
 		-r | --is_receiver	Toggle if the client is a sender or a receiver (default: sender)`
