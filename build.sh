@@ -42,6 +42,7 @@ windows_flag=false
 release_flag=false
 clean_flag=false
 run_flag=false
+app_choice="cli"
 
 # get parameters and set the flags
 
@@ -58,6 +59,12 @@ while [ "$1" != "" ]; do
 		;;
 	run)
 		run_flag=true
+		;;
+	cli)
+		app_choice="cli"
+		;;
+	gui)
+		app_choice="gui"
 		;;
 	*)
 		usage
@@ -131,7 +138,7 @@ else
 	go list -f '{{.GoFiles}}' $tags $project_dir $project_dir/build
 
 	log_info "Building for linux"
-	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$out_name $tags $project_dir)
+	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$app_choice'_'$out_name $tags $project_dir/cwd/$app_choice)
 
 	if [ $? -ne 0 ]; then
 		log_error "Build failed with error:"
