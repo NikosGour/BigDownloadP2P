@@ -138,7 +138,7 @@ else
 	go list -f '{{.GoFiles}}' $tags $project_dir $project_dir/build
 
 	log_info "Building for linux"
-	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$app_choice'_'$out_name $tags $project_dir/cwd/$app_choice)
+	error_output=$(go build -ldflags "$linker_flags" -o $project_dir/$out_dir/$app_choice'_'$out_name $tags $project_dir/cmd/$app_choice)
 
 	if [ $? -ne 0 ]; then
 		log_error "Build failed with error:"
@@ -154,6 +154,6 @@ else
 
 	if [ "$run_flag" == "true" ]; then
 		log_info "Running the built file"
-		$project_dir/$out_dir/$out_name
+		$project_dir/$out_dir/$app_choice'_'$out_name
 	fi
 fi

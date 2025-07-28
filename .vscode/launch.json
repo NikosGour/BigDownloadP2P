@@ -15,6 +15,17 @@
 				"-p",
 				"4444",
 			]
+		},
+		{
+			"name": "Launch GUI",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"env": {
+				"WAYLAND_DISPLAY": "",
+			},
+			"program": "${workspaceFolder}/cmd/gui/main.go",
+			"args": []
 		}
 	]
 }

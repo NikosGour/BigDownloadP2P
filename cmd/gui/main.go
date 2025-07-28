@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/NikosGour/BigDownloadP2P/app/gui"
 	"github.com/NikosGour/BigDownloadP2P/build"
 	log "github.com/NikosGour/logging/src"
 )
@@ -12,5 +13,5 @@ func main() {
 		log.Debug("RELEASE MODE")
 	}
 
-	panic("NOT IMPLEMENTED")
+	gui.Start()
 }
