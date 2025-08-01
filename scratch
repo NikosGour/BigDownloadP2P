@@ -1,0 +1,20 @@
+sender:
+	file = os.Readfile(filename)
+	address = 192.39.10.10
+	tcp.Send(address,file.Bytes())
+
+receiver: 
+	listner = tcp.Listen(4444)
+	for{
+		connection = listner.accept()
+		if err != nil {
+			return nil, err
+		}
+
+		go func(){
+			var content byte[];
+			connection.Read(&content)
+
+			os.SaveFile(content)
+		}()
+	}

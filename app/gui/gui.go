@@ -9,7 +9,13 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-const default_font_filename = "Lexend-Regular.ttf"
+const (
+	default_font_filename = "Lexend-Regular.ttf"
+)
+
+// var (
+// 	Gui_Background_Color = rl.NewColor(0x18, 0x18, 0x18, 0xFF)
+// )
 
 type GUI struct {
 	desired_monitor int
@@ -86,10 +92,9 @@ func (g *GUI) runMainLoop() {
 
 		rl.BeginDrawing()
 		// ---------------- DRAWING ----------------------------
-		rl.ClearBackground(rl.NewColor(0x18, 0x18, 0x18, 0xFF))
+		rl.ClearBackground(Gui_Background_Color)
 
 		if g.initilized {
-			rl.DrawTextEx(g.default_font, "Hello World", rl.Vector2{X: 0, Y: 0}, 32, 0, rl.Blue)
 		}
 		// ---------------- END DRAWING ------------------------
 		rl.EndDrawing()
