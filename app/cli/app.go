@@ -6,14 +6,13 @@ import (
 )
 
 func Start() {
-	port, is_receiver, files, err := commandLineArgs()
+	port, is_receiver, address, files, err := commandLineArgs()
 	if err != nil {
 		log.Fatal("%s", err)
 	}
 
 	log.Debug("files=%v", files)
 
-	address := "localhost"
 	if is_receiver {
 		err = app.Receive(port)
 	} else {
