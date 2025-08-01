@@ -1,13 +1,13 @@
 package app
 
 import (
-	"bytes"
-	"encoding/binary"
+	"bufio"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	log "github.com/NikosGour/logging/src"
 )
@@ -23,20 +23,23 @@ func NewFileSender(port int, address string) *Sender {
 	return fs
 }
 
-func (fs *Sender) Send(data io.Reader, size int) error {
+func (fs *Sender) Send(data *bufio.Reader) error {
 	//TODO: validate address
+	log.Debug("Dialing: %s", fs.addr)
 	conn, err := net.Dial("tcp", fs.addr)
 	if err != nil {
 		return fmt.Errorf("On dial: %w", err)
 	}
 	log.Debug("Connected on address: `%s`", fs.addr)
 
-	err = binary.Write(conn, binary.BigEndian, int64(size))
-	if err != nil {
-		return fmt.Errorf("On write size: %w", err)
-	}
+	defer conn.Close()
 
-	n, err := io.CopyN(conn, data, int64(size))
+	// err = binary.Write(conn, binary.BigEndian, int64(size))
+	// if err != nil {
+	// 	return fmt.Errorf("On write size: %w", err)
+	// }
+
+	n, err := io.CopyBuffer(conn, data, TEMP_B)
 	log.Debug("n=%#v", n)
 	if err != nil {
 		return fmt.Errorf("On write: %w", err)
@@ -46,8 +49,9 @@ func (fs *Sender) Send(data io.Reader, size int) error {
 }
 
 func (fs *Sender) SendString(data string) error {
-	data_buffer := bytes.NewBufferString(data)
-	err := fs.Send(data_buffer, data_buffer.Len())
+	// data_reader := bytes.NewBufferString(data)
+	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
+	err := fs.Send(data_reader)
 	if err != nil {
 		return err
 	}
@@ -61,12 +65,12 @@ func (fs *Sender) SendFile(file_path string) error {
 		return fmt.Errorf("On open: %w", err)
 	}
 
-	file_info, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("On file.Stat(): %w", err)
-	}
+	// file_info, err := file.Stat()
+	// if err != nil {
+	// 	return fmt.Errorf("On file.Stat(): %w", err)
+	// }
 
-	err = fs.Send(file, int(file_info.Size()))
+	err = fs.Send(bufio.NewReaderSize(file, FILE_BUFFER_SIZE))
 	if err != nil {
 		return err
 	}
