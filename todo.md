@@ -1,5 +1,7 @@
 - [ ] GUI
-- [ ] How to avoid port forwarding
-- [ ] Random port assignment
+- [ ] Ports
+	- [ ] How to avoid port forwarding
+	- [ ] Random port assignment
 - [ ] Send file type & name
-- [ ] Network Speed
+	- [ ] Show download progress
+- [ ] Fix Network Speed
