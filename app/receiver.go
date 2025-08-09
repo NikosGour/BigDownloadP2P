@@ -21,7 +21,7 @@ func Receive(port int) error {
 	if err != nil {
 		return fmt.Errorf("On listen: %w", err)
 	}
-	log.Debug("Listening on `%s`", address)
+	log.Info("Listening on `%s`", address)
 
 	for {
 		conn, err := ln.Accept()
@@ -44,53 +44,63 @@ func handleConnection(conn net.Conn) {
 	}
 	defer file.Close()
 
-	var json_size int64
-	err = binary.Read(conn, binary.BigEndian, &json_size)
+	uuid, err := receiveRequestUUID(conn)
 	if err != nil {
-		log.Error("%s", fmt.Errorf("On read json_size: %w", err))
+		log.Error("%s", err)
 		return
 	}
+	log.Info("uuid=%s", uuid)
 
-	json_id := bytes.Buffer{}
-	_n, err := io.CopyN(&json_id, conn, json_size)
-	if err != nil {
-		log.Error("%s", fmt.Errorf("On read json: %w", err))
-		return
-	}
-
-	if _n <= 0 {
-		log.Warn("Read `%d` bytes for json", _n)
-	}
-
-	var uuid UUID
-	err = json.Unmarshal(json_id.Bytes(), &uuid)
-	if err != nil {
-		log.Error("%s", fmt.Errorf("On Unmarshal json: %w", err))
-		return
-	}
-
-	log.Debug("uuid=%s", uuid)
-
-	// n, err := io.CopyBuffer(file, conn, TEMP_B)
-	// log.Debug("n=%v", n)
-	// if err != nil {
-	// 	log.Error("%s", fmt.Errorf("On read: %w", err))
-	// 	return
-	// }
 	err = receiveLoop(file, conn)
 	if err != nil {
 		log.Error("%s", fmt.Errorf("On receive loop: %w", err))
 	}
 }
 
+func receiveRequestUUID(conn net.Conn) (UUID, error) {
+	json_uuid, err := receiveSmallBytes(conn)
+	if err != nil {
+		return UUID{}, err
+	}
+
+	var uuid UUID
+	err = json.Unmarshal(json_uuid.Bytes(), &uuid)
+	if err != nil {
+		return UUID{}, fmt.Errorf("On Unmarshal json: %w", err)
+	}
+
+	return uuid, nil
+}
+
+func receiveSmallBytes(conn net.Conn) (bytes.Buffer, error) {
+	var size int64
+	err := binary.Read(conn, binary.BigEndian, &size)
+	if err != nil {
+		return bytes.Buffer{}, fmt.Errorf("On read json_size: %w", err)
+	}
+
+	data := bytes.Buffer{}
+	n, err := io.CopyN(&data, conn, size)
+	if err != nil {
+		return bytes.Buffer{}, fmt.Errorf("On read json: %w", err)
+	}
+
+	if n <= 0 {
+		log.Warn("Read `%d` bytes for json", n)
+	}
+	return data, nil
+}
+
 func receiveLoop(file *os.File, conn net.Conn) error {
 	bufferedWriter := bufio.NewWriterSize(file, FILE_BUFFER_SIZE)
 	defer bufferedWriter.Flush()
 
+	buf := make([]byte, TEMP_B_SIZE)
 	for {
-		n, err := conn.Read(TEMP_B)
+		n, err := conn.Read(buf)
 		if n > 0 {
-			_, writeErr := bufferedWriter.Write(TEMP_B[:n])
+			log.Info("Read %d bytes from %s", n, conn.RemoteAddr())
+			_, writeErr := bufferedWriter.Write(buf[:n])
 			if writeErr != nil {
 				return fmt.Errorf("write failed: %w", writeErr)
 			}

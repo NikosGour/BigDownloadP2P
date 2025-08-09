@@ -11,11 +11,10 @@ func Start() {
 		log.Fatal("%s", err)
 	}
 
-	log.Debug("files=%v", files)
-
 	if is_receiver {
 		err = app.Receive(port)
 	} else {
+		log.Debug("files=%v", files)
 		fs := app.NewFileSender(port, address)
 		err = fs.SendFiles(files)
 	}

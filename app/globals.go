@@ -9,9 +9,12 @@ const (
 	GiB            = Gibibyte
 	Tebibyte       = Gibibyte * 1024
 	TiB            = Tebibyte
+
+	TEMP_B_SIZE = 1 * MiB
 )
 
 var (
-	TEMP_B           = make([]byte, 1*MiB)
+	TEMP_B = make([]byte, TEMP_B_SIZE)
+
 	FILE_BUFFER_SIZE = 300 * len(TEMP_B)
 )

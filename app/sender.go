@@ -30,40 +30,15 @@ func NewFileSender(port int, address string) *Sender {
 	return fs
 }
 
-func (fs *Sender) Send(data *bufio.Reader, request_id UUID, dataHandling ...func(conn net.Conn)) error {
-	//TODO: validate address
-	log.Debug("Dialing: %s", fs.addr)
-	conn, err := net.Dial("tcp", fs.addr)
+func (fs *Sender) sendBytes(data *bufio.Reader, request_id UUID) error {
+	conn, err := fs.requestPrologue(request_id)
 	if err != nil {
-		return fmt.Errorf("On dial: %w", err)
+		return err
 	}
-	log.Debug("Connected on address: `%s`", fs.addr)
 	defer conn.Close()
 
-	id_json, err := json.Marshal(request_id)
-	if err != nil {
-		return fmt.Errorf("On marshal uuid: %w", err)
-	}
-
-	err = binary.Write(conn, binary.BigEndian, int64(len(id_json)))
-	if err != nil {
-		return fmt.Errorf("On write json size: %w", err)
-	}
-
-	_n, err := io.CopyN(conn, bytes.NewBuffer(id_json), int64(len(id_json)))
-	if err != nil {
-		return fmt.Errorf("On send json body: %w", err)
-	}
-
-	if _n <= 0 {
-		log.Warn("Wrote `%d` bytes", _n)
-	}
-
-	if len(dataHandling) > 0 {
-		dataHandling[0](conn)
-	}
-
-	n, err := io.CopyBuffer(conn, data, TEMP_B)
+	buf := make([]byte, TEMP_B_SIZE)
+	n, err := io.CopyBuffer(conn, data, buf)
 	log.Debug("n=%#v", n)
 	if err != nil {
 		return fmt.Errorf("On write: %w", err)
@@ -72,10 +47,95 @@ func (fs *Sender) Send(data *bufio.Reader, request_id UUID, dataHandling ...func
 	return nil
 }
 
+func (fs *Sender) requestPrologue(request_id UUID) (net.Conn, error) {
+	conn, err := fs.connect()
+	if err != nil {
+		return nil, err
+	}
+
+	err = sendRequestUUID(conn, request_id)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
+func (fs *Sender) connect() (net.Conn, error) {
+	//TODO: validate address
+	log.Debug("Dialing: %s", fs.addr)
+	conn, err := net.Dial("tcp", fs.addr)
+	if err != nil {
+		return nil, fmt.Errorf("On dial: %w", err)
+	}
+	log.Info("Connected on address: `%s`", fs.addr)
+	return conn, nil
+}
+
+func (fs *Sender) sendHandlePackets(data *bufio.Reader, request_id UUID, packetHandling func(conn net.Conn, n int)) error {
+	conn, err := fs.requestPrologue(request_id)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	buf := make([]byte, TEMP_B_SIZE)
+	for {
+		_n, err := data.Read(buf)
+		if _n > 0 {
+			n, err := conn.Write(buf[:_n])
+			if err != nil {
+				return fmt.Errorf("write failed: %w", err)
+			}
+
+			if n <= 0 {
+				log.Warn("Wrote `%d` bytes", n)
+			}
+
+			packetHandling(conn, n)
+
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read failed: %w", err)
+		}
+	}
+
+}
+
+func sendRequestUUID(conn net.Conn, request_id UUID) error {
+	id_json, err := json.Marshal(request_id)
+	if err != nil {
+		return fmt.Errorf("On marshal uuid: %w", err)
+	}
+
+	n, err := sendSmallBytes(conn, id_json)
+	if err != nil {
+		return err
+	}
+	if n <= 0 {
+		log.Warn("Wrote `%d` bytes", n)
+	}
+	return nil
+}
+
+func sendSmallBytes(conn net.Conn, data []byte) (int64, error) {
+	err := binary.Write(conn, binary.BigEndian, int64(len(data)))
+	if err != nil {
+		return 0, fmt.Errorf("On write data size: %w", err)
+	}
+
+	n, err := io.CopyN(conn, bytes.NewBuffer(data), int64(len(data)))
+	if err != nil {
+		return 0, fmt.Errorf("On send data body: %w", err)
+	}
+	return n, nil
+}
+
 func (fs *Sender) SendString(data string) error {
-	// data_reader := bytes.NewBufferString(data)
 	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
-	err := fs.Send(data_reader, uuid.New())
+	err := fs.sendBytes(data_reader, uuid.New())
 	if err != nil {
 		return err
 	}
@@ -94,8 +154,8 @@ func (fs *Sender) SendFile(file_path string) error {
 	// 	return fmt.Errorf("On file.Stat(): %w", err)
 	// }
 
-	err = fs.Send(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), uuid.New(), func(conn net.Conn) {
-		log.Debug("Hello")
+	err = fs.sendHandlePackets(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), uuid.New(), func(conn net.Conn, n int) {
+		log.Info("Wrote %d bytes into %s", n, conn.RemoteAddr())
 	})
 	if err != nil {
 		return err
