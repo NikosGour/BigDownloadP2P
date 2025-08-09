@@ -6,6 +6,7 @@ import (
 )
 
 func Start() {
+
 	port, is_receiver, address, files, err := commandLineArgs()
 	if err != nil {
 		log.Fatal("%s", err)
@@ -16,8 +17,10 @@ func Start() {
 	} else {
 		log.Debug("files=%v", files)
 		fs := app.NewFileSender(port, address)
-		// err = fs.SendFiles(files)
-		err = fs.SendString("nikos")
+		defer fs.Close()
+
+		err = fs.SendFiles(files)
+		// err = fs.SendString("nikos")
 	}
 
 	if err != nil {
