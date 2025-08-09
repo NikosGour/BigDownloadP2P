@@ -1,5 +1,7 @@
 package app
 
+import "fmt"
+
 const (
 	Kibibyte int64 = 1024
 	KiB            = Kibibyte
@@ -18,3 +20,20 @@ var (
 
 	FILE_BUFFER_SIZE = 300 * len(TEMP_B)
 )
+
+type RequestType int
+
+const (
+	RequestSendFile RequestType = iota
+	RequestSendString
+)
+
+//go:generate easytags $GOFILE
+type RequestHeader struct {
+	RequestType RequestType `json:"request_type"`
+	UUID        UUID        `json:"uuid"`
+}
+
+func (rh RequestHeader) String() string {
+	return fmt.Sprintf("{UUID:%s, RequestType:%d}", rh.UUID, rh.RequestType)
+}

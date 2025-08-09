@@ -30,8 +30,8 @@ func NewFileSender(port int, address string) *Sender {
 	return fs
 }
 
-func (fs *Sender) sendBytes(data *bufio.Reader, request_id UUID) error {
-	conn, err := fs.requestPrologue(request_id)
+func (fs *Sender) sendBytes(data *bufio.Reader, request_header RequestHeader) error {
+	conn, err := fs.requestPrologue(request_header)
 	if err != nil {
 		return err
 	}
@@ -47,13 +47,13 @@ func (fs *Sender) sendBytes(data *bufio.Reader, request_id UUID) error {
 	return nil
 }
 
-func (fs *Sender) requestPrologue(request_id UUID) (net.Conn, error) {
+func (fs *Sender) requestPrologue(request_header RequestHeader) (net.Conn, error) {
 	conn, err := fs.connect()
 	if err != nil {
 		return nil, err
 	}
 
-	err = sendRequestUUID(conn, request_id)
+	err = sendRequestHeader(conn, request_header)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +71,8 @@ func (fs *Sender) connect() (net.Conn, error) {
 	return conn, nil
 }
 
-func (fs *Sender) sendHandlePackets(data *bufio.Reader, request_id UUID, packetHandling func(conn net.Conn, n int)) error {
-	conn, err := fs.requestPrologue(request_id)
+func (fs *Sender) sendHandlePackets(data *bufio.Reader, request_header RequestHeader, packetHandling func(conn net.Conn, n int)) error {
+	conn, err := fs.requestPrologue(request_header)
 	if err != nil {
 		return err
 	}
@@ -104,10 +104,10 @@ func (fs *Sender) sendHandlePackets(data *bufio.Reader, request_id UUID, packetH
 
 }
 
-func sendRequestUUID(conn net.Conn, request_id UUID) error {
-	id_json, err := json.Marshal(request_id)
+func sendRequestHeader(conn net.Conn, request_header RequestHeader) error {
+	id_json, err := json.Marshal(request_header)
 	if err != nil {
-		return fmt.Errorf("On marshal uuid: %w", err)
+		return fmt.Errorf("On marshal header: %w", err)
 	}
 
 	n, err := sendSmallBytes(conn, id_json)
@@ -135,7 +135,10 @@ func sendSmallBytes(conn net.Conn, data []byte) (int64, error) {
 
 func (fs *Sender) SendString(data string) error {
 	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
-	err := fs.sendBytes(data_reader, uuid.New())
+	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendString}
+	log.Debug("rh=%s", rh)
+
+	err := fs.sendBytes(data_reader, rh)
 	if err != nil {
 		return err
 	}
@@ -153,8 +156,10 @@ func (fs *Sender) SendFile(file_path string) error {
 	// if err != nil {
 	// 	return fmt.Errorf("On file.Stat(): %w", err)
 	// }
+	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendFile}
+	log.Debug("rh=%s", rh)
 
-	err = fs.sendHandlePackets(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), uuid.New(), func(conn net.Conn, n int) {
+	err = fs.sendHandlePackets(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), rh, func(conn net.Conn, n int) {
 		log.Info("Wrote %d bytes into %s", n, conn.RemoteAddr())
 	})
 	if err != nil {

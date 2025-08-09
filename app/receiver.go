@@ -44,12 +44,13 @@ func handleConnection(conn net.Conn) {
 	}
 	defer file.Close()
 
-	uuid, err := receiveRequestUUID(conn)
+	request_header, err := receiveRequestHeader(conn)
 	if err != nil {
 		log.Error("%s", err)
 		return
 	}
-	log.Info("uuid=%s", uuid)
+
+	log.Debug("request_header=%s", request_header)
 
 	err = receiveLoop(file, conn)
 	if err != nil {
@@ -57,19 +58,19 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func receiveRequestUUID(conn net.Conn) (UUID, error) {
+func receiveRequestHeader(conn net.Conn) (RequestHeader, error) {
 	json_uuid, err := receiveSmallBytes(conn)
 	if err != nil {
-		return UUID{}, err
+		return RequestHeader{}, err
 	}
 
-	var uuid UUID
-	err = json.Unmarshal(json_uuid.Bytes(), &uuid)
+	var request_header RequestHeader
+	err = json.Unmarshal(json_uuid.Bytes(), &request_header)
 	if err != nil {
-		return UUID{}, fmt.Errorf("On Unmarshal json: %w", err)
+		return RequestHeader{}, fmt.Errorf("On Unmarshal json: %w", err)
 	}
 
-	return uuid, nil
+	return request_header, nil
 }
 
 func receiveSmallBytes(conn net.Conn) (bytes.Buffer, error) {

@@ -16,7 +16,8 @@ func Start() {
 	} else {
 		log.Debug("files=%v", files)
 		fs := app.NewFileSender(port, address)
-		err = fs.SendFiles(files)
+		// err = fs.SendFiles(files)
+		err = fs.SendString("nikos")
 	}
 
 	if err != nil {
