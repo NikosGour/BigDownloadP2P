@@ -22,7 +22,12 @@ var (
 	ErrUnrecognizedRequestType = errors.New("Unrecognized request type")
 )
 
-func Receive(port int) error {
+func Listen(port int, downloads_dir string) error {
+
+	if downloads_dir != "" {
+		DOWNLOADS_DIR = downloads_dir
+	}
+
 	address := "0.0.0.0:" + strconv.Itoa(port)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
@@ -154,14 +159,34 @@ func receiveFile(conn net.Conn) error {
 	log.Debug("file_info=%#v", file_info)
 
 	// Create output dir if it doesn't exist
-	output_dir := path.Join(PROJECT_DIR, "downloads")
-	err = os.Mkdir(output_dir, os.ModeDir|os.ModePerm)
-	if err != nil && !os.IsExist(err) {
-		return fmt.Errorf("On Mkdir: %w", err)
+	for i := 0; ; i++ {
+		var downloads_dir string
+		if i == 0 {
+			downloads_dir = DOWNLOADS_DIR
+		} else {
+			downloads_dir = DOWNLOADS_DIR + "_" + strconv.Itoa(i)
+		}
+		err = os.Mkdir(downloads_dir, os.ModeDir|os.ModePerm)
+
+		if os.IsExist(err) {
+			temp_dir_info, err := os.Stat(downloads_dir)
+			if err != nil {
+				return fmt.Errorf("On stat: %w", err)
+			}
+
+			if !temp_dir_info.Mode().IsDir() {
+				continue
+			}
+
+		} else if err != nil {
+			return fmt.Errorf("On Mkdir: %w", err)
+		}
+		DOWNLOADS_DIR = downloads_dir
+		break
 	}
 
 	// Create the output file to add the content
-	file_name := path.Join(output_dir, strconv.Itoa(int(time.Now().Unix()))+"_"+strconv.Itoa(int(rand.Int32()))+"_"+file_info.Name)
+	file_name := path.Join(DOWNLOADS_DIR, strconv.Itoa(int(time.Now().Unix()))+"_"+strconv.Itoa(int(rand.Int32()))+"_"+file_info.Name)
 	log.Debug("file_name=%#v", file_name)
 	file, err := os.Create(file_name)
 	if err != nil {

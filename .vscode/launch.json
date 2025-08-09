@@ -10,10 +10,13 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${workspaceFolder}/cmd/cli/main.go",
+			"cwd": "${workspaceFolder}",
 			"args": [
 				"-r",
 				"-p",
 				"4444",
+				"-o",
+				"scratch"
 			]
 		},
 		{
@@ -22,6 +25,7 @@
 			"request": "launch",
 			"mode": "auto",
 			"program": "${workspaceFolder}/cmd/cli/main.go",
+			"cwd": "${workspaceFolder}",
 			"args": [
 				"-p",
 				"4444",

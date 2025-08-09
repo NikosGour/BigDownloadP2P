@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path"
 	"time"
 )
 
@@ -25,6 +26,7 @@ var (
 	FILE_BUFFER_SIZE = 300 * len(TEMP_B)
 
 	PROJECT_DIR, _ = os.Getwd()
+	DOWNLOADS_DIR  = path.Join(PROJECT_DIR, "downloads")
 )
 
 type RequestType int

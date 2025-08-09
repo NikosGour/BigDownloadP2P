@@ -7,13 +7,13 @@ import (
 
 func Start() {
 
-	port, is_receiver, address, files, err := commandLineArgs()
+	port, is_receiver, address, output_dir, files, err := commandLineArgs()
 	if err != nil {
 		log.Fatal("%s", err)
 	}
 
 	if is_receiver {
-		err = app.Receive(port)
+		err = app.Listen(port, output_dir)
 	} else {
 		log.Debug("files=%v", files)
 		fs := app.NewFileSender(port, address)

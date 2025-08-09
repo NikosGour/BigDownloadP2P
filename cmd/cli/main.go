@@ -11,11 +11,6 @@ import (
 )
 
 func main() {
-	// defer profile.Start(profile.MemProfile).Stop()
-	// go func() {
-	// 	http.ListenAndServe(":8080", nil)
-	// }()
-
 	if build.DEBUG_MODE {
 		log.Debug("DEBUG MODE")
 	} else {

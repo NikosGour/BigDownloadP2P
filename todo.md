@@ -2,6 +2,6 @@
 - [ ] Ports
 	- [ ] How to avoid port forwarding
 	- [ ] Random port assignment
-- [ ] Send file type & name
-	- [ ] Show download progress
+- [x] Send file type & name
+- [ ] Show download progress
 - [ ] Fix Network Speed
