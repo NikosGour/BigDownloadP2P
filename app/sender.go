@@ -2,6 +2,9 @@ package app
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -9,8 +12,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	log "github.com/NikosGour/logging/src"
 )
+
+type UUID = uuid.UUID
 
 type Sender struct {
 	port int
@@ -23,7 +30,7 @@ func NewFileSender(port int, address string) *Sender {
 	return fs
 }
 
-func (fs *Sender) Send(data *bufio.Reader) error {
+func (fs *Sender) Send(data *bufio.Reader, request_id UUID, dataHandling ...func(conn net.Conn)) error {
 	//TODO: validate address
 	log.Debug("Dialing: %s", fs.addr)
 	conn, err := net.Dial("tcp", fs.addr)
@@ -31,13 +38,30 @@ func (fs *Sender) Send(data *bufio.Reader) error {
 		return fmt.Errorf("On dial: %w", err)
 	}
 	log.Debug("Connected on address: `%s`", fs.addr)
-
 	defer conn.Close()
 
-	// err = binary.Write(conn, binary.BigEndian, int64(size))
-	// if err != nil {
-	// 	return fmt.Errorf("On write size: %w", err)
-	// }
+	id_json, err := json.Marshal(request_id)
+	if err != nil {
+		return fmt.Errorf("On marshal uuid: %w", err)
+	}
+
+	err = binary.Write(conn, binary.BigEndian, int64(len(id_json)))
+	if err != nil {
+		return fmt.Errorf("On write json size: %w", err)
+	}
+
+	_n, err := io.CopyN(conn, bytes.NewBuffer(id_json), int64(len(id_json)))
+	if err != nil {
+		return fmt.Errorf("On send json body: %w", err)
+	}
+
+	if _n <= 0 {
+		log.Warn("Wrote `%d` bytes", _n)
+	}
+
+	if len(dataHandling) > 0 {
+		dataHandling[0](conn)
+	}
 
 	n, err := io.CopyBuffer(conn, data, TEMP_B)
 	log.Debug("n=%#v", n)
@@ -51,7 +75,7 @@ func (fs *Sender) Send(data *bufio.Reader) error {
 func (fs *Sender) SendString(data string) error {
 	// data_reader := bytes.NewBufferString(data)
 	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
-	err := fs.Send(data_reader)
+	err := fs.Send(data_reader, uuid.New())
 	if err != nil {
 		return err
 	}
@@ -70,7 +94,9 @@ func (fs *Sender) SendFile(file_path string) error {
 	// 	return fmt.Errorf("On file.Stat(): %w", err)
 	// }
 
-	err = fs.Send(bufio.NewReaderSize(file, FILE_BUFFER_SIZE))
+	err = fs.Send(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), uuid.New(), func(conn net.Conn) {
+		log.Debug("Hello")
+	})
 	if err != nil {
 		return err
 	}
