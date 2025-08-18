@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -83,17 +84,28 @@ func (fs *Sender) sendHandlePackets(data io.Reader, request_header RequestHeader
 }
 
 func (fs *Sender) sendHandlePacketsNoRequestHeader(data io.Reader, packetHandling func(n int)) error {
+	ticker := time.NewTicker(3 * time.Second)
+	acc_byte := 0
 	buf := make([]byte, TEMP_B_SIZE)
 	for {
 		_n, err := data.Read(buf)
 		if _n > 0 {
 			n, err := fs.conn.Write(buf[:_n])
+			acc_byte += n
 			if err != nil {
 				return fmt.Errorf("write failed: %w", err)
 			}
 
-			if n <= 0 {
-				log.Warn("Wrote `%d` bytes", n)
+			// if n <= 0 {
+			// 	log.Warn("Wrote `%d` bytes", n)
+			// }
+
+			select {
+			case <-ticker.C:
+				transformed, unit := BestUnitOfData(acc_byte / 3)
+				log.Info("Upload Speed: %f %s/sec", transformed, unit)
+				acc_byte = 0
+			default:
 			}
 
 			packetHandling(n)
@@ -204,7 +216,7 @@ func (fs *Sender) SendFile(file_path string) error {
 	}
 
 	err = fs.sendHandlePacketsNoRequestHeader(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), func(n int) {
-		log.Info("Wrote %d bytes into %s", n, fs.conn.RemoteAddr())
+		// log.Info("Wrote %d bytes into %s", n, fs.conn.RemoteAddr())
 	})
 	if err != nil {
 		return err

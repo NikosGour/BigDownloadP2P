@@ -198,22 +198,38 @@ func receiveFile(conn net.Conn) error {
 	bufferedWriter := bufio.NewWriterSize(file, FILE_BUFFER_SIZE)
 	defer bufferedWriter.Flush()
 
+	ticker := time.NewTicker(3 * time.Second)
+	acc_byte := 0
+
 	buf := make([]byte, TEMP_B_SIZE)
 	for {
 		n, err := conn.Read(buf)
 		if n > 0 {
-			log.Info("Read %d bytes from %s", n, conn.RemoteAddr())
+			// log.Info("Read %d bytes from %s", n, conn.RemoteAddr())
+			acc_byte += n
+
 			_, writeErr := bufferedWriter.Write(buf[:n])
 			if writeErr != nil {
 				return fmt.Errorf("write failed: %w", writeErr)
 			}
-
-			reportDownloadProgress(file)
+			temp_info, err := os.Stat(file_name)
+			if err != nil {
+				return fmt.Errorf("On temp Stat: %w", err)
+			}
+			select {
+			case <-ticker.C:
+				transformed, unit := BestUnitOfData(acc_byte / 3)
+				log.Info("Download Speed: %f %s/sec", transformed, unit)
+				acc_byte = 0
+			default:
+			}
+			reportDownloadProgress(file_info, temp_info)
 
 			// Periodically flush to reduce memory use
 			if bufferedWriter.Buffered() > FILE_BUFFER_SIZE/2 {
 				_ = bufferedWriter.Flush()
 			}
+
 		}
 		if err == io.EOF {
 			_ = bufferedWriter.Flush()
@@ -226,5 +242,6 @@ func receiveFile(conn net.Conn) error {
 	return nil
 }
 
-func reportDownloadProgress(file *os.File) {
+func reportDownloadProgress(file_info FileInfoJSON, temp_file os.FileInfo) {
+	// log.Info("Downloaded `%d/%d` %f%%", temp_file.Size(), file_info.Size, float64(temp_file.Size())/float64(file_info.Size))
 }

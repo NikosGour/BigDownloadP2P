@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"time"
@@ -63,4 +64,20 @@ func FromFileInfo(info os.FileInfo) FileInfoJSON {
 		IsDir:   info.IsDir(),
 	}
 
+}
+
+func BestUnitOfData(data int) (float32, string) {
+	l := math.Log10(float64(data))
+	switch {
+	case l < 3:
+		return float32(data), "B"
+	case l >= 3 && l < 6:
+		return float32(data) / float32(1000), "Kb"
+	case l >= 6 && l < 9:
+		return float32(data) / float32(1e6), "Mb"
+	case l >= 9:
+		return float32(data) / float32(1e9), "Gb"
+	default:
+		panic(fmt.Sprintf("Unreachable: %d, log10: %f", data, l))
+	}
 }
