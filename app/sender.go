@@ -47,6 +47,11 @@ func (fs *Sender) connect() (net.Conn, error) {
 		return nil, fmt.Errorf("On dial: %w", err)
 	}
 	log.Info("Connected on address: `%s`", fs.addr)
+
+	err = conn.(*net.TCPConn).SetNoDelay(true)
+	if err != nil {
+		return nil, fmt.Errorf("On Nagle's: %w", err)
+	}
 	return conn, nil
 }
 
@@ -193,18 +198,27 @@ func (fs *Sender) SendFile(file_path string) error {
 	if err != nil {
 		return fmt.Errorf("On open: %w", err)
 	}
+	file_info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("On file.Stat(): %w", err)
+	}
 
-	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendFile}
-	log.Debug("request_header=%s", rh)
-
-	err = fs.sendRequestHeader(rh)
+	// Todo:  Split file in part and send
+	err = fs.sendFilePart(file_info, file)
 	if err != nil {
 		return err
 	}
 
-	file_info, err := file.Stat()
+	return nil
+}
+
+func (fs *Sender) sendFilePart(file_info os.FileInfo, file *os.File) error {
+	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendFile}
+	log.Debug("request_header=%s", rh)
+
+	err := fs.sendRequestHeader(rh)
 	if err != nil {
-		return fmt.Errorf("On file.Stat(): %w", err)
+		return err
 	}
 
 	n, err := fs.sendJsonNoHeader(FromFileInfo(file_info))
@@ -221,7 +235,6 @@ func (fs *Sender) SendFile(file_path string) error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
