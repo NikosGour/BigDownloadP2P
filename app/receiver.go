@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"os"
 	"path"
@@ -16,35 +15,95 @@ import (
 	"time"
 
 	log "github.com/NikosGour/logging/src"
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 var (
 	ErrUnrecognizedRequestType = errors.New("Unrecognized request type")
 )
 
-func Listen(port int, downloads_dir string) error {
+type Listener struct {
+	Port                int
+	DownloadsDir        string
+	activeFileDownloads cmap.ConcurrentMap[UUID, *ActiveFileDownload]
+}
+
+type ActiveFileDownload struct {
+	FileNames     []string
+	DirName       string
+	FileParts     int
+	PartsFinished int
+	DoneChan      chan int
+	Done          bool
+}
+
+func NewActiveFileDownload(file_parts int) *ActiveFileDownload {
+	afd := &ActiveFileDownload{FileParts: file_parts, Done: false}
+	afd.FileNames = []string{}
+	afd.DoneChan = make(chan int)
+	go func() {
+		for {
+			if afd.FileParts <= afd.PartsFinished {
+				afd.Done = true
+				close(afd.DoneChan)
+				return
+			}
+			<-afd.DoneChan
+			afd.PartsFinished++
+		}
+	}()
+
+	return afd
+}
+
+func NewListener(port int, downloads_dir string) *Listener {
+	l := &Listener{Port: port}
+	l.DownloadsDir = path.Join(PROJECT_DIR, "downloads")
+	l.activeFileDownloads = cmap.NewStringer[UUID, *ActiveFileDownload]()
 
 	if downloads_dir != "" {
-		DOWNLOADS_DIR = downloads_dir
+		l.DownloadsDir = downloads_dir
 	}
 
-	address := "0.0.0.0:" + strconv.Itoa(port)
+	return l
+}
+
+func (l *Listener) Listen() error {
+
+	address := "0.0.0.0:" + strconv.Itoa(l.Port)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		return fmt.Errorf("On listen: %w", err)
 	}
 	log.Info("Listening on `%s`", address)
+	go l.handleActiveFileDownloads()
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			return fmt.Errorf("On accept: %w", err)
 		}
-		handleConnection(conn)
+		go l.handleConnection(conn)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func (l *Listener) handleActiveFileDownloads() {
+	for {
+		if l.activeFileDownloads.Count() != 0 {
+			for tuple := range l.activeFileDownloads.IterBuffered() {
+				active_file := tuple.Val
+				if active_file.Done {
+					l.FinalizeFileDownload(active_file.DirName)
+				}
+			}
+		}
+	}
+}
+func (l *Listener) FinalizeFileDownload(path string) {
+
+}
+
+func (l *Listener) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	timer := time.Now()
 
@@ -63,7 +122,7 @@ func handleConnection(conn net.Conn) {
 			log.Error("%s", fmt.Errorf("On receive string: %w", err))
 		}
 	case RequestSendFile:
-		err = receiveFile(conn)
+		err = l.receiveFile(conn, request_header)
 		if err != nil {
 			log.Error("%s", fmt.Errorf("On receive file: %w", err))
 		}
@@ -150,7 +209,14 @@ func receiveJson[T any](conn net.Conn) (T, error) {
 	return rv, nil
 }
 
-func receiveFile(conn net.Conn) error {
+func (l *Listener) receiveFile(conn net.Conn, request_header RequestHeader) error {
+	// Create downloads dir if it doesn't exist
+	downloads_dir, err := tryMakeNewDir(l.DownloadsDir)
+	if err != nil {
+		return err
+	}
+	l.DownloadsDir = downloads_dir
+
 	// Get the file info
 	file_info, err := receiveJson[FileInfoJSON](conn)
 	if err != nil {
@@ -158,41 +224,30 @@ func receiveFile(conn net.Conn) error {
 	}
 	log.Debug("file_info=%#v", file_info)
 
-	// Create output dir if it doesn't exist
-	for i := 0; ; i++ {
-		var downloads_dir string
-		if i == 0 {
-			downloads_dir = DOWNLOADS_DIR
-		} else {
-			downloads_dir = DOWNLOADS_DIR + "_" + strconv.Itoa(i)
+	var file_dir string
+	active_file, ok := l.activeFileDownloads.Get(request_header.UUID)
+	if !ok {
+		active_file = NewActiveFileDownload(NUMBER_OF_PARTS)
+		l.activeFileDownloads.Set(request_header.UUID, active_file)
+
+		file_dir, err = tryMakeNewDir(path.Join(l.DownloadsDir, file_info.Name))
+		if err != nil {
+			return err
 		}
-		err = os.Mkdir(downloads_dir, os.ModeDir|os.ModePerm)
 
-		if os.IsExist(err) {
-			temp_dir_info, err := os.Stat(downloads_dir)
-			if err != nil {
-				return fmt.Errorf("On stat: %w", err)
-			}
-
-			if !temp_dir_info.Mode().IsDir() {
-				continue
-			}
-
-		} else if err != nil {
-			return fmt.Errorf("On Mkdir: %w", err)
-		}
-		DOWNLOADS_DIR = downloads_dir
-		break
+		active_file.DirName = file_dir
 	}
+	file_dir = active_file.DirName
 
 	// Create the output file to add the content
-	file_name := path.Join(DOWNLOADS_DIR, strconv.Itoa(int(time.Now().Unix()))+"_"+strconv.Itoa(int(rand.Int32()))+"_"+file_info.Name)
+	file_name := path.Join(file_dir, file_info.PartName)
 	log.Debug("file_name=%#v", file_name)
 	file, err := os.Create(file_name)
 	if err != nil {
 		return fmt.Errorf("On file create: %w", err)
 	}
 	defer file.Close()
+	active_file.FileNames = append(active_file.FileNames, file_name)
 
 	// Download the file using buffering
 	bufferedWriter := bufio.NewWriterSize(file, FILE_BUFFER_SIZE)
@@ -208,11 +263,17 @@ func receiveFile(conn net.Conn) error {
 			// log.Info("Read %d bytes from %s", n, conn.RemoteAddr())
 			acc_bytes += n
 			total_bytes += n
-
+			// if total_bytes >= int(file_info.Size) {
+			// 	n -= total_bytes - int(file_info.Size)
+			// }
 			_, writeErr := bufferedWriter.Write(buf[:n])
 			if writeErr != nil {
 				return fmt.Errorf("write failed: %w", writeErr)
 			}
+
+			// if total_bytes >= int(file_info.Size) {
+			// 	return nil
+			// }
 
 			select {
 			case <-ticker.C:

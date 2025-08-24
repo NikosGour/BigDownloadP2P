@@ -13,7 +13,8 @@ func Start() {
 	}
 
 	if is_receiver {
-		err = app.Listen(port, output_dir)
+		l := app.NewListener(port, output_dir)
+		err = l.Listen()
 	} else {
 		log.Debug("files=%v", files)
 		fs := app.NewFileSender(port, address)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path"
+	"strconv"
 	"time"
 )
 
@@ -19,13 +19,14 @@ const (
 	TiB            = Tebibyte
 
 	TEMP_B_SIZE = 256 * KiB
+
+	NUMBER_OF_PARTS = 4
 )
 
 var (
 	FILE_BUFFER_SIZE = int(4 * MiB) //300 * TEMP_B_SIZE
 
 	PROJECT_DIR, _ = os.Getwd()
-	DOWNLOADS_DIR  = path.Join(PROJECT_DIR, "downloads")
 )
 
 type RequestType int
@@ -51,6 +52,8 @@ type FileInfoJSON struct {
 	Mode    string    `json:"mode"`
 	ModTime time.Time `json:"mod_time"`
 	IsDir   bool      `json:"is_dir"`
+
+	PartName string `json:"part_name"`
 }
 
 func FromFileInfo(info os.FileInfo) FileInfoJSON {
@@ -77,5 +80,32 @@ func BestUnitOfData(data int) (float32, string) {
 		return float32(data) / float32(1e9), "Gb"
 	default:
 		panic(fmt.Sprintf("Unreachable: %d, log10: %f", data, l))
+	}
+}
+
+func tryMakeNewDir(path string) (string, error) {
+	for i := 0; ; i++ {
+		var downloads_dir string
+		if i == 0 {
+			downloads_dir = path
+		} else {
+			downloads_dir = path + "_" + strconv.Itoa(i)
+		}
+		err := os.Mkdir(downloads_dir, os.ModeDir|os.ModePerm)
+
+		if os.IsExist(err) {
+			temp_dir_info, err := os.Stat(downloads_dir)
+			if err != nil {
+				return "", fmt.Errorf("On stat: %w", err)
+			}
+
+			if !temp_dir_info.Mode().IsDir() {
+				continue
+			}
+
+		} else if err != nil {
+			return "", fmt.Errorf("On Mkdir: %w", err)
+		}
+		return downloads_dir, nil
 	}
 }

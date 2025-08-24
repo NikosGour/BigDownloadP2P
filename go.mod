@@ -9,6 +9,7 @@ require (
 	github.com/gen2brain/raylib-go/raylib v0.55.1 // indirect
 	github.com/google/pprof v0.0.0-20211214055906-6f57359322fd // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/orcaman/concurrent-map/v2 v2.0.1 // indirect
 	github.com/pkg/profile v1.7.0 // indirect
 	gitlab.com/metakeule/fmtdate v1.2.2 // indirect
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 // indirect

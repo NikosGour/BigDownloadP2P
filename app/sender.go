@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cmap "github.com/orcaman/concurrent-map/v2"
 
 	log "github.com/NikosGour/logging/src"
 )
@@ -21,20 +22,16 @@ import (
 type UUID = uuid.UUID
 
 type Sender struct {
-	port int
-	addr string
-	conn net.Conn
+	port  int
+	addr  string
+	conns cmap.ConcurrentMap[UUID, net.Conn]
 }
 
 func NewFileSender(port int, address string) *Sender {
 	fs := &Sender{port: port}
 	fs.addr = address + ":" + strconv.Itoa(fs.port)
 
-	conn, err := fs.connect()
-	if err != nil {
-		log.Fatal("%s", err)
-	}
-	fs.conn = conn
+	fs.conns = cmap.NewStringer[UUID, net.Conn]()
 
 	return fs
 }
@@ -55,14 +52,14 @@ func (fs *Sender) connect() (net.Conn, error) {
 	return conn, nil
 }
 
-func (fs *Sender) sendBytes(data io.Reader, request_header RequestHeader) error {
-	err := fs.requestPrologue(request_header)
+func (fs *Sender) sendBytes(conn net.Conn, data io.Reader, request_header RequestHeader) error {
+	err := fs.requestPrologue(conn, request_header)
 	if err != nil {
 		return err
 	}
 
 	buf := make([]byte, TEMP_B_SIZE)
-	n, err := io.CopyBuffer(fs.conn, data, buf)
+	n, err := io.CopyBuffer(conn, data, buf)
 	log.Debug("n=%#v", n)
 	if err != nil {
 		return fmt.Errorf("On write: %w", err)
@@ -71,31 +68,36 @@ func (fs *Sender) sendBytes(data io.Reader, request_header RequestHeader) error 
 	return nil
 }
 
-func (fs *Sender) requestPrologue(request_header RequestHeader) error {
-	err := fs.sendRequestHeader(request_header)
+func (fs *Sender) requestPrologue(conn net.Conn, request_header RequestHeader) error {
+	err := fs.sendRequestHeader(conn, request_header)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (fs *Sender) sendHandlePackets(data io.Reader, request_header RequestHeader, packetHandling func(n int)) error {
-	err := fs.requestPrologue(request_header)
+func (fs *Sender) sendHandlePackets(conn net.Conn, data io.Reader, request_header RequestHeader, packetHandling func(n int)) error {
+	err := fs.requestPrologue(conn, request_header)
 	if err != nil {
 		return err
 	}
-
-	return fs.sendHandlePacketsNoRequestHeader(data, packetHandling)
+	//TODO fix
+	return fs.sendHandlePacketsNoRequestHeader(conn, data, 0, packetHandling)
 }
 
-func (fs *Sender) sendHandlePacketsNoRequestHeader(data io.Reader, packetHandling func(n int)) error {
+func (fs *Sender) sendHandlePacketsNoRequestHeader(conn net.Conn, data io.Reader, count int, packetHandling func(n int)) error {
 	ticker := time.NewTicker(3 * time.Second)
 	acc_byte := 0
+	bytes_read := 0
 	buf := make([]byte, TEMP_B_SIZE)
 	for {
 		_n, err := data.Read(buf)
 		if _n > 0 {
-			n, err := fs.conn.Write(buf[:_n])
+			bytes_read += _n
+			if bytes_read > count {
+				_n -= bytes_read - count
+			}
+			n, err := conn.Write(buf[:_n])
 			acc_byte += n
 			if err != nil {
 				return fmt.Errorf("write failed: %w", err)
@@ -125,13 +127,13 @@ func (fs *Sender) sendHandlePacketsNoRequestHeader(data io.Reader, packetHandlin
 	}
 
 }
-func (fs *Sender) sendRequestHeader(request_header RequestHeader) error {
+func (fs *Sender) sendRequestHeader(conn net.Conn, request_header RequestHeader) error {
 	id_json, err := json.Marshal(request_header)
 	if err != nil {
 		return fmt.Errorf("On marshal header: %w", err)
 	}
 
-	n, err := fs.sendSmallBytes(id_json)
+	n, err := fs.sendSmallBytes(conn, id_json)
 	if err != nil {
 		return err
 	}
@@ -141,34 +143,34 @@ func (fs *Sender) sendRequestHeader(request_header RequestHeader) error {
 	return nil
 }
 
-func (fs *Sender) sendSmallBytes(data []byte) (int64, error) {
-	err := binary.Write(fs.conn, binary.BigEndian, int64(len(data)))
+func (fs *Sender) sendSmallBytes(conn net.Conn, data []byte) (int64, error) {
+	err := binary.Write(conn, binary.BigEndian, int64(len(data)))
 	if err != nil {
 		return 0, fmt.Errorf("On write data size: %w", err)
 	}
 
-	n, err := io.CopyN(fs.conn, bytes.NewBuffer(data), int64(len(data)))
+	n, err := io.CopyN(conn, bytes.NewBuffer(data), int64(len(data)))
 	if err != nil {
 		return 0, fmt.Errorf("On send data body: %w", err)
 	}
 	return n, nil
 }
 
-func (fs *Sender) SendJson(data any, request_header RequestHeader) (int64, error) {
-	err := fs.requestPrologue(request_header)
+func (fs *Sender) SendJson(conn net.Conn, data any, request_header RequestHeader) (int64, error) {
+	err := fs.requestPrologue(conn, request_header)
 	if err != nil {
 		return 0, err
 	}
-	return fs.sendJsonNoHeader(data)
+	return fs.sendJsonNoHeader(conn, data)
 }
 
-func (fs *Sender) sendJsonNoHeader(data any) (int64, error) {
+func (fs *Sender) sendJsonNoHeader(conn net.Conn, data any) (int64, error) {
 	data_json, err := json.Marshal(data)
 	if err != nil {
 		return 0, fmt.Errorf("On marshal: %w", err)
 	}
 
-	n, err := fs.sendSmallBytes(data_json)
+	n, err := fs.sendSmallBytes(conn, data_json)
 	if err != nil {
 		return 0, err
 	}
@@ -180,12 +182,12 @@ func (fs *Sender) sendJsonNoHeader(data any) (int64, error) {
 	return n, nil
 }
 
-func (fs *Sender) SendString(data string) error {
+func (fs *Sender) SendString(conn net.Conn, data string) error {
 	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
 	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendString}
 	log.Debug("request_header=%s", rh)
 
-	err := fs.sendBytes(data_reader, rh)
+	err := fs.sendBytes(conn, data_reader, rh)
 	if err != nil {
 		return err
 	}
@@ -194,42 +196,96 @@ func (fs *Sender) SendString(data string) error {
 }
 
 func (fs *Sender) SendFile(file_path string) error {
-	file, err := os.Open(file_path)
-	if err != nil {
-		return fmt.Errorf("On open: %w", err)
-	}
-	file_info, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("On file.Stat(): %w", err)
-	}
 
-	// Todo:  Split file in part and send
-	err = fs.sendFilePart(file_info, file)
+	readers, part_size, err := fs.splitFileIntoParts(file_path)
 	if err != nil {
 		return err
+	}
+	file_info, err := os.Stat(file_path)
+	if err != nil {
+		return fmt.Errorf("On Stat: %w", err)
+	}
+	// Todo:  Split file in part and send
+	uuid := uuid.New()
+	for i, reader := range readers {
+		conn, err := fs.connect()
+		if err != nil {
+			return err
+		}
+
+		log.Debug("Sending part %d", i)
+		err = fs.sendFilePart(conn, reader, part_size, file_info, i, uuid)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (fs *Sender) sendFilePart(file_info os.FileInfo, file *os.File) error {
-	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendFile}
+func (fs *Sender) splitFileIntoParts(file_path string) ([]*bufio.Reader, int64, error) {
+	file, err := os.Open(file_path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("On open: %w", err)
+	}
+	file_info, err := file.Stat()
+	if err != nil {
+		return nil, 0, fmt.Errorf("On file.Stat(): %w", err)
+	}
+
+	files := []*os.File{}
+
+	for i := 0; i < NUMBER_OF_PARTS; i++ {
+		file, err := os.Open(file_path)
+		if err != nil {
+			return nil, 0, fmt.Errorf("On open: %w", err)
+		}
+		files = append(files, file)
+	}
+
+	file_parts := [NUMBER_OF_PARTS]*bufio.Reader{}
+	part_size := int64(file_info.Size() / 4)
+
+	for i := 0; i < NUMBER_OF_PARTS; i += 1 {
+		seek_pos := part_size * int64(i)
+		_, err := files[i].Seek(seek_pos, 0)
+		if err != nil {
+			return nil, 0, fmt.Errorf("On seek: %w", err)
+		}
+		file_parts[i] = bufio.NewReaderSize(files[i], FILE_BUFFER_SIZE)
+	}
+
+	// for i, v := range file_parts {
+	// 	buf, _, err := v.ReadLine()
+	// 	if err != nil && err != io.EOF {
+	// 		return nil, 0, fmt.Errorf("On readLine: %w", err)
+	// 	}
+	// 	log.Debug("buf%d=%s", i, string(buf[:NUMBER_OF_PARTS]))
+
+	// }
+	return file_parts[:], part_size, nil
+}
+func (fs *Sender) sendFilePart(conn net.Conn, r *bufio.Reader, n int64, file_info os.FileInfo, part_num int, uuid UUID) error {
+	rh := RequestHeader{UUID: uuid, RequestType: RequestSendFile}
 	log.Debug("request_header=%s", rh)
 
-	err := fs.sendRequestHeader(rh)
+	err := fs.sendRequestHeader(conn, rh)
 	if err != nil {
 		return err
 	}
+	file_info_json := FromFileInfo(file_info)
+	file_info_json.Size = n
+	file_info_json.PartName = file_info_json.Name + strconv.Itoa(part_num)
 
-	n, err := fs.sendJsonNoHeader(FromFileInfo(file_info))
+	_n, err := fs.sendJsonNoHeader(conn, file_info_json)
 	if err != nil {
 		return err
 	}
-	if n <= 0 {
-		log.Warn("Wrote `%d` bytes", n)
+	if _n <= 0 {
+		log.Warn("Wrote `%d` bytes", _n)
 	}
 
-	err = fs.sendHandlePacketsNoRequestHeader(bufio.NewReaderSize(file, FILE_BUFFER_SIZE), func(n int) {
+	err = fs.sendHandlePacketsNoRequestHeader(conn, r, int(n), func(n int) {
 		// log.Info("Wrote %d bytes into %s", n, fs.conn.RemoteAddr())
 	})
 	if err != nil {
@@ -252,5 +308,6 @@ func (fs *Sender) SendFiles(file_paths []string) error {
 }
 
 func (fs *Sender) Close() error {
-	return fs.conn.Close()
+	//TODO: implement
+	return nil
 }

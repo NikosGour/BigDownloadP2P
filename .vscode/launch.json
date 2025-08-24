@@ -16,7 +16,7 @@
 				"-p",
 				"4444",
 				"-o",
-				"scratch"
+				"downloads"
 			]
 		},
 		{
@@ -31,7 +31,8 @@
 				"4444",
 				// "-a",
 				// "162.120.188.195",
-				"/mnt/b/WSL/Ubuntu/ext4.vhdx",
+				// "/mnt/b/WSL/Ubuntu/ext4.vhdx",
+				"test.txt"
 			]
 		},
 		{
