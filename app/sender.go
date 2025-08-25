@@ -52,8 +52,8 @@ func (fs *Sender) connect() (net.Conn, error) {
 	return conn, nil
 }
 
-func (fs *Sender) sendBytes(conn net.Conn, data io.Reader, request_header RequestHeader) error {
-	err := fs.requestPrologue(conn, request_header)
+func (conn *Conn) sendBytes(data io.Reader, request_header RequestHeader) error {
+	err := conn.requestPrologue(request_header)
 	if err != nil {
 		return err
 	}
@@ -68,24 +68,24 @@ func (fs *Sender) sendBytes(conn net.Conn, data io.Reader, request_header Reques
 	return nil
 }
 
-func (fs *Sender) requestPrologue(conn net.Conn, request_header RequestHeader) error {
-	err := fs.sendRequestHeader(conn, request_header)
+func (conn *Conn) requestPrologue(request_header RequestHeader) error {
+	err := conn.sendRequestHeader(request_header)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (fs *Sender) sendHandlePackets(conn net.Conn, data io.Reader, request_header RequestHeader, packetHandling func(n int)) error {
-	err := fs.requestPrologue(conn, request_header)
+func (conn *Conn) sendHandlePackets(data io.Reader, request_header RequestHeader, packetHandling func(n int)) error {
+	err := conn.requestPrologue(request_header)
 	if err != nil {
 		return err
 	}
 	//TODO fix
-	return fs.sendHandlePacketsNoRequestHeader(conn, data, 0, packetHandling)
+	return conn.sendHandlePacketsNoRequestHeader(data, 0, packetHandling)
 }
 
-func (fs *Sender) sendHandlePacketsNoRequestHeader(conn net.Conn, data io.Reader, count int, packetHandling func(n int)) error {
+func (conn *Conn) sendHandlePacketsNoRequestHeader(data io.Reader, count int, packetHandling func(n int)) error {
 	ticker := time.NewTicker(3 * time.Second)
 	acc_byte := 0
 	bytes_read := 0
@@ -127,13 +127,13 @@ func (fs *Sender) sendHandlePacketsNoRequestHeader(conn net.Conn, data io.Reader
 	}
 
 }
-func (fs *Sender) sendRequestHeader(conn net.Conn, request_header RequestHeader) error {
+func (conn *Conn) sendRequestHeader(request_header RequestHeader) error {
 	id_json, err := json.Marshal(request_header)
 	if err != nil {
 		return fmt.Errorf("On marshal header: %w", err)
 	}
 
-	n, err := fs.sendSmallBytes(conn, id_json)
+	n, err := conn.sendSmallBytes(id_json)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (fs *Sender) sendRequestHeader(conn net.Conn, request_header RequestHeader)
 	return nil
 }
 
-func (fs *Sender) sendSmallBytes(conn net.Conn, data []byte) (int64, error) {
+func (conn *Conn) sendSmallBytes(data []byte) (int64, error) {
 	err := binary.Write(conn, binary.BigEndian, int64(len(data)))
 	if err != nil {
 		return 0, fmt.Errorf("On write data size: %w", err)
@@ -156,21 +156,21 @@ func (fs *Sender) sendSmallBytes(conn net.Conn, data []byte) (int64, error) {
 	return n, nil
 }
 
-func (fs *Sender) SendJson(conn net.Conn, data any, request_header RequestHeader) (int64, error) {
-	err := fs.requestPrologue(conn, request_header)
+func (conn *Conn) SendJson(data any, request_header RequestHeader) (int64, error) {
+	err := conn.requestPrologue(request_header)
 	if err != nil {
 		return 0, err
 	}
-	return fs.sendJsonNoHeader(conn, data)
+	return conn.sendJsonNoHeader(data)
 }
 
-func (fs *Sender) sendJsonNoHeader(conn net.Conn, data any) (int64, error) {
+func (conn *Conn) sendJsonNoHeader(data any) (int64, error) {
 	data_json, err := json.Marshal(data)
 	if err != nil {
 		return 0, fmt.Errorf("On marshal: %w", err)
 	}
 
-	n, err := fs.sendSmallBytes(conn, data_json)
+	n, err := conn.sendSmallBytes(data_json)
 	if err != nil {
 		return 0, err
 	}
@@ -182,12 +182,12 @@ func (fs *Sender) sendJsonNoHeader(conn net.Conn, data any) (int64, error) {
 	return n, nil
 }
 
-func (fs *Sender) SendString(conn net.Conn, data string) error {
+func (conn *Conn) SendString(data string) error {
 	data_reader := bufio.NewReaderSize(strings.NewReader(data), FILE_BUFFER_SIZE)
 	rh := RequestHeader{UUID: uuid.New(), RequestType: RequestSendString}
 	log.Debug("request_header=%s", rh)
 
-	err := fs.sendBytes(conn, data_reader, rh)
+	err := conn.sendBytes(data_reader, rh)
 	if err != nil {
 		return err
 	}
@@ -205,16 +205,18 @@ func (fs *Sender) SendFile(file_path string) error {
 	if err != nil {
 		return fmt.Errorf("On Stat: %w", err)
 	}
+
 	// Todo:  Split file in part and send
 	uuid := uuid.New()
 	for i, reader := range readers {
-		conn, err := fs.connect()
+		_conn, err := fs.connect()
 		if err != nil {
 			return err
 		}
+		conn := NewConn(_conn)
 
 		log.Debug("Sending part %d", i)
-		err = fs.sendFilePart(conn, reader, part_size, file_info, i, uuid)
+		err = conn.sendFilePart(reader, part_size, file_info, i, uuid)
 		if err != nil {
 			return err
 		}
@@ -265,11 +267,11 @@ func (fs *Sender) splitFileIntoParts(file_path string) ([]*bufio.Reader, int64, 
 	// }
 	return file_parts[:], part_size, nil
 }
-func (fs *Sender) sendFilePart(conn net.Conn, r *bufio.Reader, n int64, file_info os.FileInfo, part_num int, uuid UUID) error {
+func (conn *Conn) sendFilePart(r *bufio.Reader, n int64, file_info os.FileInfo, part_num int, uuid UUID) error {
 	rh := RequestHeader{UUID: uuid, RequestType: RequestSendFile}
 	log.Debug("request_header=%s", rh)
 
-	err := fs.sendRequestHeader(conn, rh)
+	err := conn.sendRequestHeader(rh)
 	if err != nil {
 		return err
 	}
@@ -277,7 +279,7 @@ func (fs *Sender) sendFilePart(conn net.Conn, r *bufio.Reader, n int64, file_inf
 	file_info_json.Size = n
 	file_info_json.PartName = file_info_json.Name + strconv.Itoa(part_num)
 
-	_n, err := fs.sendJsonNoHeader(conn, file_info_json)
+	_n, err := conn.sendJsonNoHeader(file_info_json)
 	if err != nil {
 		return err
 	}
@@ -285,7 +287,7 @@ func (fs *Sender) sendFilePart(conn net.Conn, r *bufio.Reader, n int64, file_inf
 		log.Warn("Wrote `%d` bytes", _n)
 	}
 
-	err = fs.sendHandlePacketsNoRequestHeader(conn, r, int(n), func(n int) {
+	err = conn.sendHandlePacketsNoRequestHeader(r, int(n), func(n int) {
 		// log.Info("Wrote %d bytes into %s", n, fs.conn.RemoteAddr())
 	})
 	if err != nil {

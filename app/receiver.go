@@ -22,6 +22,27 @@ var (
 	ErrUnrecognizedRequestType = errors.New("Unrecognized request type")
 )
 
+type Conn struct {
+	c io.ReadWriteCloser
+}
+
+func NewConn(conn io.ReadWriteCloser) *Conn {
+	c := &Conn{c: conn}
+	return c
+}
+
+func (conn *Conn) Close() error {
+	return conn.c.Close()
+}
+
+func (conn *Conn) Read(p []byte) (n int, err error) {
+	return conn.c.Read(p)
+}
+
+func (conn *Conn) Write(p []byte) (n int, err error) {
+	return conn.c.Write(p)
+}
+
 type Listener struct {
 	Port                int
 	DownloadsDir        string
@@ -83,7 +104,8 @@ func (l *Listener) Listen() error {
 		if err != nil {
 			return fmt.Errorf("On accept: %w", err)
 		}
-		go l.handleConnection(conn)
+
+		go l.handleConnection(NewConn(conn))
 	}
 }
 
@@ -103,11 +125,11 @@ func (l *Listener) FinalizeFileDownload(path string) {
 
 }
 
-func (l *Listener) handleConnection(conn net.Conn) {
+func (l *Listener) handleConnection(conn *Conn) {
 	defer conn.Close()
 	timer := time.Now()
 
-	request_header, err := receiveRequestHeader(conn)
+	request_header, err := conn.receiveRequestHeader()
 	if err != nil {
 		log.Error("%s", err)
 		return
@@ -117,12 +139,12 @@ func (l *Listener) handleConnection(conn net.Conn) {
 
 	switch request_header.RequestType {
 	case RequestSendString:
-		err = receiveString(conn)
+		err = conn.receiveString()
 		if err != nil {
 			log.Error("%s", fmt.Errorf("On receive string: %w", err))
 		}
 	case RequestSendFile:
-		err = l.receiveFile(conn, request_header)
+		err = conn.receiveFile(l, request_header)
 		if err != nil {
 			log.Error("%s", fmt.Errorf("On receive file: %w", err))
 		}
@@ -136,8 +158,8 @@ func (l *Listener) handleConnection(conn net.Conn) {
 	log.Info("Download took %s", time.Since(timer))
 }
 
-func receiveRequestHeader(conn net.Conn) (RequestHeader, error) {
-	json_request_header, err := receiveSmallBytes(conn)
+func (conn *Conn) receiveRequestHeader() (RequestHeader, error) {
+	json_request_header, err := conn.receiveSmallBytes()
 	if err != nil {
 		return RequestHeader{}, err
 	}
@@ -151,8 +173,8 @@ func receiveRequestHeader(conn net.Conn) (RequestHeader, error) {
 	return request_header, nil
 }
 
-func receiveString(conn net.Conn) error {
-	buf, err := readBytes(conn)
+func (conn *Conn) receiveString() error {
+	buf, err := conn.readBytes()
 	if err != nil {
 		return err
 	}
@@ -161,7 +183,7 @@ func receiveString(conn net.Conn) error {
 	return nil
 }
 
-func readBytes(conn net.Conn) (bytes.Buffer, error) {
+func (conn *Conn) readBytes() (bytes.Buffer, error) {
 	buf := make([]byte, TEMP_B_SIZE)
 	data := bytes.Buffer{}
 	n, err := io.CopyBuffer(&data, conn, buf)
@@ -175,7 +197,7 @@ func readBytes(conn net.Conn) (bytes.Buffer, error) {
 	return data, nil
 }
 
-func receiveSmallBytes(conn net.Conn) (bytes.Buffer, error) {
+func (conn *Conn) receiveSmallBytes() (bytes.Buffer, error) {
 	var size int64
 	err := binary.Read(conn, binary.BigEndian, &size)
 	if err != nil {
@@ -194,9 +216,9 @@ func receiveSmallBytes(conn net.Conn) (bytes.Buffer, error) {
 	return data, nil
 }
 
-func receiveJson[T any](conn net.Conn) (T, error) {
+func receiveJson[T any](conn *Conn) (T, error) {
 	var rv T
-	data, err := receiveSmallBytes(conn)
+	data, err := conn.receiveSmallBytes()
 	if err != nil {
 		return rv, err
 	}
@@ -209,7 +231,7 @@ func receiveJson[T any](conn net.Conn) (T, error) {
 	return rv, nil
 }
 
-func (l *Listener) receiveFile(conn net.Conn, request_header RequestHeader) error {
+func (conn *Conn) receiveFile(l *Listener, request_header RequestHeader) error {
 	// Create downloads dir if it doesn't exist
 	downloads_dir, err := tryMakeNewDir(l.DownloadsDir)
 	if err != nil {
